@@ -1,0 +1,419 @@
+// Executive Copilot - Prisma Schema
+// 価値共創情報基盤を核としたエグゼクティブコパイロット
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ======================================
+// 認証・ユーザー管理
+// ======================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole  @default(EXECUTIVE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  organizations OrganizationMember[]
+  dialogues     Dialogue[]
+  decisions     Decision[]
+  insights      Insight[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum UserRole {
+  EXECUTIVE
+  MANAGER
+  ANALYST
+  ADMIN
+}
+
+// ======================================
+// 組織・パーパス管理
+// ======================================
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  purpose     String?  @db.Text  // 企業パーパス
+  vision      String?  @db.Text
+  mission     String?  @db.Text
+  values      Json?    // 組織の価値観
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members             OrganizationMember[]
+  strategies          Strategy[]
+  capabilities        Capability[]
+  valueMetrics        ValueMetric[]
+  stakeholderAnalyses StakeholderAnalysis[]
+  scenarios           Scenario[]
+  transformations     Transformation[]
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  role           String   @default("member")
+  joinedAt       DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
+// ======================================
+// 価値創造基盤
+// ======================================
+
+model Capability {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?  @db.Text
+  category       String   // 技術/知識/プロセス/文化
+  level          Int      @default(1) // 1-5段階評価
+  importance     Int      @default(3) // 戦略的重要度
+  gap            Int?     // 目標とのギャップ
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model ValueMetric {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?  @db.Text
+  dimension      ValueDimension
+  category       String   // 財務/顧客/社会/環境/組織
+  currentValue   Float?
+  targetValue    Float?
+  unit           String?
+  frequency      String?  // 測定頻度
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  measurements  Measurement[]
+  causalLinks   CausalLink[]     @relation("SourceMetric")
+  affectedBy    CausalLink[]     @relation("TargetMetric")
+}
+
+model Measurement {
+  id            String   @id @default(cuid())
+  valueMetricId String
+  value         Float
+  measuredAt    DateTime @default(now())
+  notes         String?  @db.Text
+
+  valueMetric ValueMetric @relation(fields: [valueMetricId], references: [id], onDelete: Cascade)
+}
+
+model CausalLink {
+  id             String   @id @default(cuid())
+  sourceMetricId String
+  targetMetricId String
+  strength       Float    // 影響度 -1.0 ~ 1.0
+  confidence     Float    // 確信度 0.0 ~ 1.0
+  hypothesis     String?  @db.Text
+  verified       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  sourceMetric ValueMetric @relation("SourceMetric", fields: [sourceMetricId], references: [id])
+  targetMetric ValueMetric @relation("TargetMetric", fields: [targetMetricId], references: [id])
+}
+
+enum ValueDimension {
+  FINANCIAL    // 財務的価値
+  CUSTOMER     // 顧客価値
+  SOCIAL       // 社会的価値
+  ENVIRONMENTAL // 環境的価値
+  ORGANIZATIONAL // 組織的価値
+  INNOVATION   // イノベーション価値
+}
+
+// ======================================
+// 戦略・シナリオ管理
+// ======================================
+
+model Strategy {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?  @db.Text
+  type           StrategyType
+  timeframe      String   // 短期/中期/長期
+  status         StrategyStatus @default(DRAFT)
+  objectives     Json?    // 戦略目標
+  initiatives    Json?    // 戦略施策
+  risks          Json?    // リスク要因
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  scenarios    Scenario[]
+}
+
+model Scenario {
+  id             String   @id @default(cuid())
+  organizationId String
+  strategyId     String?
+  name           String
+  description    String?  @db.Text
+  probability    Float?   // 発生確率
+  impact         Float?   // 影響度
+  assumptions    Json?    // 前提条件
+  drivers        Json?    // 主要ドライバー
+  outcomes       Json?    // 予想される結果
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  strategy     Strategy?    @relation(fields: [strategyId], references: [id])
+}
+
+enum StrategyType {
+  CORPORATE    // 全社戦略
+  BUSINESS     // 事業戦略
+  FUNCTIONAL   // 機能戦略
+  OPERATIONAL  // 運用戦略
+}
+
+enum StrategyStatus {
+  DRAFT
+  ACTIVE
+  REVIEWING
+  ARCHIVED
+}
+
+// ======================================
+// ステークホルダー分析
+// ======================================
+
+model StakeholderAnalysis {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String   // ステークホルダー名
+  type           StakeholderType
+  description    String?  @db.Text
+  interests      Json?    // 利害関係
+  influence      Int      // 影響力 1-5
+  interest       Int      // 関心度 1-5
+  relationship   String?  // 現在の関係性
+  strategy       String?  @db.Text // 対応戦略
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum StakeholderType {
+  SHAREHOLDER
+  CUSTOMER
+  EMPLOYEE
+  PARTNER
+  SUPPLIER
+  COMMUNITY
+  GOVERNMENT
+  ENVIRONMENT
+}
+
+// ======================================
+// 組織変革管理
+// ======================================
+
+model Transformation {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?  @db.Text
+  type           TransformationType
+  status         TransformationStatus @default(PLANNING)
+  startDate      DateTime?
+  targetDate     DateTime?
+  objectives     Json?
+  milestones     Json?
+  risks          Json?
+  progress       Float    @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum TransformationType {
+  CULTURAL       // 文化変革
+  STRUCTURAL     // 組織構造変革
+  PROCESS        // プロセス変革
+  DIGITAL        // デジタル変革
+  STRATEGIC      // 戦略変革
+}
+
+enum TransformationStatus {
+  PLANNING
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+// ======================================
+// AI対話・洞察管理
+// ======================================
+
+model Dialogue {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String?
+  context   Json?    // 対話コンテキスト
+  messages  Json     // 対話履歴
+  insights  Insight[]
+  decisions Decision[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Insight {
+  id         String      @id @default(cuid())
+  userId     String
+  dialogueId String?
+  type       InsightType
+  content    String      @db.Text
+  confidence Float?      // 確信度
+  tags       String[]
+  source     String?     // 洞察の出所
+  verified   Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dialogue Dialogue? @relation(fields: [dialogueId], references: [id])
+}
+
+model Decision {
+  id          String         @id @default(cuid())
+  userId      String
+  dialogueId  String?
+  title       String
+  description String?        @db.Text
+  type        DecisionType
+  status      DecisionStatus @default(PENDING)
+  options     Json?          // 選択肢
+  rationale   String?        @db.Text // 根拠
+  impact      Json?          // 影響分析
+  deadline    DateTime?
+  decidedAt   DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dialogue Dialogue? @relation(fields: [dialogueId], references: [id])
+}
+
+enum InsightType {
+  PATTERN      // パターン認識
+  OPPORTUNITY  // 機会発見
+  RISK         // リスク検出
+  TREND        // トレンド
+  BIAS         // バイアス検出
+  RECOMMENDATION // 推奨事項
+}
+
+enum DecisionType {
+  STRATEGIC    // 戦略的決断
+  TACTICAL     // 戦術的決断
+  OPERATIONAL  // 運用的決断
+}
+
+enum DecisionStatus {
+  PENDING
+  ANALYZING
+  DECIDED
+  IMPLEMENTED
+  REVIEWED
+}
+
+// ======================================
+// 知識ベース（15種類DB連携）
+// ======================================
+
+model KnowledgeItem {
+  id          String        @id @default(cuid())
+  type        KnowledgeType
+  title       String
+  content     String        @db.Text
+  metadata    Json?
+  tags        String[]
+  source      String?
+  confidence  Float?
+  validFrom   DateTime?
+  validUntil  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([type, tags])
+}
+
+enum KnowledgeType {
+  MEGA_TREND          // メガトレンド
+  VALUE_TEMPLATE      // バリューテンプレート
+  DEEP_NEEDS          // ニーズの裏のニーズ
+  SUCCESS_PATTERN     // 成功情報
+  SEEDS               // シーズ
+  PARTNER             // パートナー
+  SHORT_TREND         // 短期トレンド
+  COMPETITOR          // 競合情報
+  OBJECTION_HANDLING  // 反論処理
+  HERO_STORY          // ヒーローメイクトーク
+}
