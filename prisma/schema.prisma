@@ -1,0 +1,454 @@
+// Executive Copilot - Prisma Schema
+// 15種類のDB連携基盤に対応
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// 認証・ユーザー管理
+// ========================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  role          Role      @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions      Session[]
+  accounts      Account[]
+  analyses      Analysis[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum Role {
+  USER
+  EXECUTIVE
+  ADMIN
+}
+
+// ========================================
+// 2.2 メガトレンドDB (P0)
+// ========================================
+
+model Megatrend {
+  id            String   @id @default(cuid())
+  name          String
+  description   String   @db.Text
+  category      String
+  impact        Impact
+  timeframe     String
+  confidence    Float    @default(0.5)
+  sources       String[]
+  keywords      String[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  analyses      MegatrendAnalysis[]
+  relatedTrends ShortTermTrend[]
+}
+
+model MegatrendAnalysis {
+  id           String    @id @default(cuid())
+  megatrendId  String
+  analysisDate DateTime  @default(now())
+  score        Float
+  insights     String    @db.Text
+  opportunities String[]
+  threats      String[]
+
+  megatrend    Megatrend @relation(fields: [megatrendId], references: [id])
+}
+
+enum Impact {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ========================================
+// 2.3 バリューテンプレートDB (P0)
+// ========================================
+
+model ValueTemplate {
+  id              String   @id @default(cuid())
+  name            String
+  description     String   @db.Text
+  category        ValueCategory
+  targetSegment   String
+  valueProposition String  @db.Text
+  keyBenefits     String[]
+  useCases        String[]
+  successMetrics  String[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  applications    ValueApplication[]
+}
+
+model ValueApplication {
+  id             String        @id @default(cuid())
+  templateId     String
+  context        String        @db.Text
+  customization  String        @db.Text
+  results        String?       @db.Text
+  appliedAt      DateTime      @default(now())
+
+  template       ValueTemplate @relation(fields: [templateId], references: [id])
+}
+
+enum ValueCategory {
+  COST_REDUCTION
+  REVENUE_GROWTH
+  EFFICIENCY
+  INNOVATION
+  CUSTOMER_EXPERIENCE
+  SUSTAINABILITY
+}
+
+// ========================================
+// 2.4 ニーズの裏のニーズDB (P0)
+// ========================================
+
+model HiddenNeed {
+  id              String   @id @default(cuid())
+  surfaceNeed     String
+  hiddenNeed      String   @db.Text
+  rootCause       String   @db.Text
+  customerSegment String
+  emotionalDriver String?
+  functionalDriver String?
+  socialDriver    String?
+  validationLevel ValidationLevel @default(HYPOTHESIS)
+  evidence        String[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  insights        NeedInsight[]
+}
+
+model NeedInsight {
+  id           String     @id @default(cuid())
+  hiddenNeedId String
+  insight      String     @db.Text
+  actionable   Boolean    @default(false)
+  priority     Int        @default(0)
+  createdAt    DateTime   @default(now())
+
+  hiddenNeed   HiddenNeed @relation(fields: [hiddenNeedId], references: [id])
+}
+
+enum ValidationLevel {
+  HYPOTHESIS
+  OBSERVED
+  VALIDATED
+  PROVEN
+}
+
+// ========================================
+// 2.8 成功情報DB
+// ========================================
+
+model SuccessCase {
+  id              String   @id @default(cuid())
+  title           String
+  description     String   @db.Text
+  industry        String
+  companySize     String
+  challenge       String   @db.Text
+  solution        String   @db.Text
+  results         String   @db.Text
+  keyFactors      String[]
+  lessonsLearned  String[]
+  metrics         Json?
+  publishedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ========================================
+// 2.9 シーズDB
+// ========================================
+
+model Seed {
+  id              String   @id @default(cuid())
+  name            String
+  description     String   @db.Text
+  type            SeedType
+  maturityLevel   MaturityLevel
+  potentialMarkets String[]
+  requiredResources String[]
+  risks           String[]
+  timeToMarket    String?
+  estimatedInvestment String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+enum SeedType {
+  TECHNOLOGY
+  BUSINESS_MODEL
+  PRODUCT
+  SERVICE
+  PROCESS
+}
+
+enum MaturityLevel {
+  CONCEPT
+  PROTOTYPE
+  PILOT
+  SCALING
+  MATURE
+}
+
+// ========================================
+// 2.10 パートナーDB
+// ========================================
+
+model Partner {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?  @db.Text
+  type            PartnerType
+  industry        String[]
+  capabilities    String[]
+  contactInfo     Json?
+  relationshipStatus RelationshipStatus @default(PROSPECT)
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  collaborations  Collaboration[]
+}
+
+model Collaboration {
+  id          String   @id @default(cuid())
+  partnerId   String
+  projectName String
+  description String?  @db.Text
+  status      CollaborationStatus @default(PLANNING)
+  startDate   DateTime?
+  endDate     DateTime?
+  outcomes    String[]
+
+  partner     Partner  @relation(fields: [partnerId], references: [id])
+}
+
+enum PartnerType {
+  TECHNOLOGY
+  CONSULTING
+  SUPPLIER
+  DISTRIBUTOR
+  RESEARCH
+  STRATEGIC
+}
+
+enum RelationshipStatus {
+  PROSPECT
+  ACTIVE
+  INACTIVE
+  FORMER
+}
+
+enum CollaborationStatus {
+  PLANNING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ========================================
+// 2.11 短期トレンドDB
+// ========================================
+
+model ShortTermTrend {
+  id            String   @id @default(cuid())
+  name          String
+  description   String   @db.Text
+  category      String
+  emergenceDate DateTime?
+  peakDate      DateTime?
+  declineDate   DateTime?
+  currentPhase  TrendPhase @default(EMERGING)
+  relevance     Float    @default(0.5)
+  megatrendId   String?
+  sources       String[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  megatrend     Megatrend? @relation(fields: [megatrendId], references: [id])
+}
+
+enum TrendPhase {
+  EMERGING
+  GROWING
+  PEAKING
+  DECLINING
+  FADING
+}
+
+// ========================================
+// 2.12 競合情報DB
+// ========================================
+
+model Competitor {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?  @db.Text
+  industry        String[]
+  marketPosition  String?
+  strengths       String[]
+  weaknesses      String[]
+  products        String[]
+  recentMoves     CompetitorMove[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model CompetitorMove {
+  id            String   @id @default(cuid())
+  competitorId  String
+  type          MoveType
+  description   String   @db.Text
+  date          DateTime
+  impact        Impact   @default(MEDIUM)
+  response      String?  @db.Text
+
+  competitor    Competitor @relation(fields: [competitorId], references: [id])
+}
+
+enum MoveType {
+  PRODUCT_LAUNCH
+  ACQUISITION
+  PARTNERSHIP
+  MARKET_ENTRY
+  PRICE_CHANGE
+  STRATEGY_SHIFT
+  LEADERSHIP_CHANGE
+}
+
+// ========================================
+// 分析・レポート
+// ========================================
+
+model Analysis {
+  id            String   @id @default(cuid())
+  userId        String
+  title         String
+  type          AnalysisType
+  status        AnalysisStatus @default(DRAFT)
+  inputs        Json
+  outputs       Json?
+  insights      String[]
+  recommendations String[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id])
+}
+
+enum AnalysisType {
+  MEGATREND
+  VALUE_PROPOSITION
+  NEED_DISCOVERY
+  COMPETITIVE
+  OPPORTUNITY
+  COMPREHENSIVE
+}
+
+enum AnalysisStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  ARCHIVED
+}
+
+// ========================================
+// メタデータ管理 (2.7)
+// ========================================
+
+model DataSource {
+  id            String   @id @default(cuid())
+  name          String
+  type          DataSourceType
+  connectionInfo Json?
+  lastSyncAt    DateTime?
+  syncStatus    SyncStatus @default(IDLE)
+  syncFrequency String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  qualityMetrics DataQuality[]
+}
+
+model DataQuality {
+  id            String   @id @default(cuid())
+  dataSourceId  String
+  checkedAt     DateTime @default(now())
+  completeness  Float
+  accuracy      Float
+  consistency   Float
+  timeliness    Float
+  overallScore  Float
+  issues        String[]
+
+  dataSource    DataSource @relation(fields: [dataSourceId], references: [id])
+}
+
+enum DataSourceType {
+  DATABASE
+  API
+  FILE
+  MANUAL
+  EXTERNAL_SERVICE
+}
+
+enum SyncStatus {
+  IDLE
+  SYNCING
+  SUCCESS
+  FAILED
+}
